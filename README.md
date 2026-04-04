@@ -1,4 +1,4 @@
-# CS529 Project — Lesson Quiz Assessment System
+# Lesson Quiz MockMaster
 
 An AI-powered quiz assessment system that generates quiz questions from lesson documents, grades student answers, and provides detailed tutor feedback using OpenAI Agents.
 

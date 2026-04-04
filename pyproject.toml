@@ -1,0 +1,47 @@
+[project]
+name = "cs589-ai-course"
+version = "0.1.0"
+description = "CS589 AI Course materials and assignments"
+authors = [
+    {name = "Student", email = "student@example.com"}
+]
+dependencies = [
+    "jupyter>=1.0.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "scikit-learn>=1.3.0",
+    "ipykernel>=6.25.0",
+    "python-dotenv>=1.1.1",
+    "openai>=1.98.0",
+    "openai-agents>=0.1.0",
+    "gradio>=5.39.0",
+    "pypdf>=5.9.0",
+    "duckduckgo-search>=8.1.1",
+    # `docling` currently pulls `torch`, which has no macOS x86_64 wheels at
+    # the pinned versions in `uv.lock`. Exclude on Intel Macs so `uv sync` works.
+    "docling>=2.68.0; sys_platform != \"darwin\" or platform_machine != \"x86_64\"",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["PythonBasics"]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"] 

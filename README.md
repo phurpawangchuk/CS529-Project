@@ -1,54 +1,102 @@
-# CS529 AI Engineering Course Materials
+# CS529 Project — Lesson Quiz Assessment System
 
-This folder contains lesson demos, sample code, and project materials for the CS529 AI Engineering course.
+An AI-powered quiz assessment system that generates quiz questions from lesson documents, grades student answers, and provides detailed tutor feedback using OpenAI Agents.
 
-## Before You Start
+## Prerequisites
 
-Make sure you have these installed:
+- Python 3.10+
+- [UV](https://docs.astral.sh/uv/) package manager
+- Node.js 18+ and npm
 
-- Python 3.10 or above
-- Cursor IDE or VS Code
-- UV package manager
-- Node.js (needed only for some projects)
+## Setup
 
-## Environment File
+### 1. Clone the repository
 
-This project does not include real API keys.
+```bash
+git clone https://github.com/phurpawangchuk/CS529-Project.git
+cd CS529-Project
+```
 
-Create a `.env` file from `.env.example` and add your own values.
+### 2. Create the environment file
 
-Example:
+Copy the example and fill in your API keys:
 
-.env
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your values:
+
+```
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_DEFAULT_MODEL=gpt-4o-mini
 SERPER_API_KEY=your_serper_api_key_here
+```
 
-bash
-   uv sync
+### 3. Install Python dependencies
 
+```bash
+uv sync
+```
 
-## Project Folders
-- 1_Pythonfoundations – Python basics and introductory materials
-- 2_HelloLLMChat – simple LLM chat examples
-- 3_HelloAgents – basic agent examples
-- 4_AgenticPatterns – common agent design patterns
-- 5_PythonScripts – supporting Python scripts
-- 6_meomorymgt – memory and session examples
-- 7_crewai_project – CrewAI-based examples
-- 8_MCP_project – MCP-related examples
-- 9_deployment – deployment examples
+## Running the Application
+
+### Backend (FastAPI)
+
+```bash
+cd Project1
+uv run uvicorn api.main:app --reload
+```
+
+The API will be available at:
+- http://127.0.0.1:8000
+- Swagger docs: http://127.0.0.1:8000/docs
+
+### Frontend (React)
+
+In a separate terminal:
+
+```bash
+cd Project1/ui
+npm install
+npm start
+```
+
+The UI will open at http://localhost:3000.
+
+## API Endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /` | Health check |
+| `POST /read-document` | Read and parse a lesson document |
+| `POST /generate-questions` | Generate quiz questions for a lesson |
+| `POST /quiz-assessment` | Grade student answers |
+| `POST /assessment-result` | Get detailed tutor feedback |
+
+## Project Structure
+
+```
+Project1/
+├── api/                  # FastAPI routers
+│   ├── main.py           # App entry point
+│   ├── read_document_router.py
+│   ├── generate_questions_router.py
+│   ├── quiz_assessment_router.py
+│   └── assessment_result_router.py
+├── ui/                   # React frontend
+│   ├── src/
+│   └── package.json
+├── generate_questions.py # Question generation agent
+├── quiz_assessment.py    # Quiz grading agent
+├── assessment_result.py  # Tutor feedback agent
+├── quiz_chatbot.py       # CLI chatbot interface
+├── read_document.py      # Document reader
+└── lesson_quiz_overview.ipynb  # Jupyter notebook demo
+```
 
 ## Notes
-- Do not store real API keys in shared files.
-- Some projects may require additional setup depending on the lesson.
-- If a notebook asks for a kernel, choose your Python environment for this project.
 
-## Running the Code
-- After setup, open the required lesson folder and run the example files as instructed in class.
-
-## If something does not run:
-- confirm .env is created correctly
-- make sure dependencies are installed
-- check that your API key is valid
-- verify that the correct Python environment is selected
+- Do not commit real API keys. The `.env` file is git-ignored.
+- The backend must be running for the frontend to work.
+- If using a Jupyter notebook, select the project's Python environment as the kernel.

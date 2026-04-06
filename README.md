@@ -40,6 +40,7 @@ LESSON_3_VECTOR_STORE_ID=paste_here_lesson_3_vector_store_id
 
 ```bash
 uv sync
+pip install -r Project1/requirements.txt
 ```
 
 ## Running the Application

@@ -24,6 +24,16 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 client = OpenAI()
 MODEL = "gpt-4o-mini"
+TEMPERATURE = 0.7
+
+AVAILABLE_MODELS = [
+    "gpt-4o-mini",
+    "gpt-4o",
+    "gpt-4.1-mini",
+    "gpt-4.1",
+    "gpt-4.1-nano",
+    "o4-mini",
+]
 
 # ---------------------------------------------------------------------------
 # Lesson-to-Vector-Store mapping
@@ -51,10 +61,10 @@ def get_vector_store_id(lesson_number: int) -> str:
             f"Invalid lesson number {lesson_number}. Must be between 1 and {TOTAL_LESSONS}."
         )
     store_id = LESSON_VECTOR_STORES[lesson_number]
-    if "REPLACE" in store_id:
+    if not store_id or "REPLACE" in store_id:
         raise ValueError(
-            f"Vector store ID for Lesson {lesson_number} has not been configured. "
-            f"Upload the lesson document to OpenAI and set LESSON_{lesson_number}_VECTOR_STORE_ID."
+            f"Vector Store ID for Lesson {lesson_number} is not found. "
+            f"Please set LESSON_{lesson_number}_VECTOR_STORE_ID in your .env file."
         )
     return store_id
 

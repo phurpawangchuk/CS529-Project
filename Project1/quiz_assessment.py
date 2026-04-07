@@ -10,7 +10,7 @@ Pattern reference: 4_AgenticPatterns/tools/functionastool.ipynb (@function_tool)
 from agents import function_tool
 
 from read_document import client, MODEL, QUESTIONS_PER_LESSON
-from generate_questions import SESSION
+from generate_questions import SESSION, get_lesson_session
 
 # ---------------------------------------------------------------------------
 # Prompt constants for the grader LLM call
@@ -47,8 +47,9 @@ def assess_answer(lesson_number: int, question_number: int, user_answer: str) ->
     Returns:
         A short verdict (CORRECT / INCORRECT) with one-line feedback.
     """
-    lesson_data = SESSION.get(int(lesson_number))
-    if not lesson_data:
+    try:
+        lesson_data = get_lesson_session(int(lesson_number))
+    except ValueError:
         return (
             f"Error: Questions for Lesson {lesson_number} have not been generated yet. "
             "Please generate them first."

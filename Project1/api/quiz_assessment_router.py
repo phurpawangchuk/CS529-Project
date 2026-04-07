@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from read_document import client, MODEL, QUESTIONS_PER_LESSON
-from generate_questions import SESSION
+from generate_questions import SESSION, get_lesson_session, save_assessment
 from quiz_assessment import ANSWER_GRADER_SYSTEM_PROMPT, ANSWER_GRADER_USER_TEMPLATE
 
 router = APIRouter(prefix="/lessons", tags=["Quiz Assessment"])
@@ -23,8 +23,9 @@ class AssessAnswerRequest(BaseModel):
 @router.post("/{lesson_number}/assess")
 def assess_answer(lesson_number: int, body: AssessAnswerRequest):
     """Grade the student's answer against the stored reference answer."""
-    lesson_data = SESSION.get(lesson_number)
-    if not lesson_data:
+    try:
+        lesson_data = get_lesson_session(lesson_number)
+    except ValueError:
         raise HTTPException(
             status_code=404,
             detail=f"Questions for Lesson {lesson_number} have not been generated yet. "
@@ -50,6 +51,9 @@ def assess_answer(lesson_number: int, body: AssessAnswerRequest):
         ],
     )
     grading_result = response.choices[0].message.content or ""
+
+    # Persist to SQLite
+    save_assessment(lesson_number, body.question_number, body.user_answer, grading_result)
 
     return {
         "lesson_number": lesson_number,

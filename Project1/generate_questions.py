@@ -8,7 +8,9 @@ Pattern reference: 4_AgenticPatterns/tools/hostedtools.ipynb (FileSearchTool)
 """
 
 import json
+import os
 import re
+import sqlite3
 
 from agents import Agent, Runner, trace, FileSearchTool
 
@@ -19,14 +21,143 @@ from read_document import (
 )
 
 # ---------------------------------------------------------------------------
-# Session store — holds generated questions & reference answers per lesson
+# SQLite database setup
+# ---------------------------------------------------------------------------
+DB_PATH = os.path.join(os.path.dirname(__file__), "quiz_sessions.db")
+
+
+def _get_connection() -> sqlite3.Connection:
+    """Return a connection to the SQLite database."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+
+def _init_db():
+    """Create tables if they don't exist."""
+    conn = _get_connection()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lesson_number INTEGER NOT NULL,
+            question_number INTEGER NOT NULL,
+            question TEXT NOT NULL,
+            reference_answer TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(lesson_number, question_number)
+        );
+
+        CREATE TABLE IF NOT EXISTS assessments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lesson_number INTEGER NOT NULL,
+            question_number INTEGER NOT NULL,
+            user_answer TEXT NOT NULL,
+            grading_result TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lesson_number INTEGER NOT NULL,
+            question_number INTEGER NOT NULL,
+            user_answer TEXT NOT NULL,
+            tutor_feedback TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.commit()
+    conn.close()
+
+
+_init_db()
+
+# ---------------------------------------------------------------------------
+# In-memory session cache (backed by SQLite)
 # ---------------------------------------------------------------------------
 SESSION: dict[int, dict] = {}
-# Structure after generation:
-#   SESSION[lesson_number] = {
-#       "questions": ["Q1", ..., "Q5"],
-#       "reference_answers": ["A1", ..., "A5"],
-#   }
+
+
+def _load_session_from_db(lesson_number: int) -> dict | None:
+    """Load questions for a lesson from SQLite into SESSION cache."""
+    conn = _get_connection()
+    rows = conn.execute(
+        "SELECT question, reference_answer, question_number "
+        "FROM questions WHERE lesson_number = ? ORDER BY question_number",
+        (lesson_number,),
+    ).fetchall()
+    conn.close()
+    if not rows:
+        return None
+    data = {
+        "questions": [row["question"] for row in rows],
+        "reference_answers": [row["reference_answer"] for row in rows],
+    }
+    SESSION[lesson_number] = data
+    return data
+
+
+def _save_questions_to_db(lesson_number: int, questions: list[str], reference_answers: list[str]):
+    """Persist generated questions and reference answers to SQLite."""
+    conn = _get_connection()
+    # Replace old questions for this lesson
+    conn.execute("DELETE FROM questions WHERE lesson_number = ?", (lesson_number,))
+    for i, (q, a) in enumerate(zip(questions, reference_answers), start=1):
+        conn.execute(
+            "INSERT INTO questions (lesson_number, question_number, question, reference_answer) "
+            "VALUES (?, ?, ?, ?)",
+            (lesson_number, i, q, a),
+        )
+    conn.commit()
+    conn.close()
+
+
+def save_assessment(lesson_number: int, question_number: int, user_answer: str, grading_result: str):
+    """Store a grading result in the database."""
+    conn = _get_connection()
+    conn.execute(
+        "INSERT INTO assessments (lesson_number, question_number, user_answer, grading_result) "
+        "VALUES (?, ?, ?, ?)",
+        (lesson_number, question_number, user_answer, grading_result),
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_feedback(lesson_number: int, question_number: int, user_answer: str, tutor_feedback: str):
+    """Store tutor feedback in the database."""
+    conn = _get_connection()
+    conn.execute(
+        "INSERT INTO feedback (lesson_number, question_number, user_answer, tutor_feedback) "
+        "VALUES (?, ?, ?, ?)",
+        (lesson_number, question_number, user_answer, tutor_feedback),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_assessment_history(lesson_number: int) -> list[dict]:
+    """Retrieve all assessment records for a lesson."""
+    conn = _get_connection()
+    rows = conn.execute(
+        "SELECT question_number, user_answer, grading_result, created_at "
+        "FROM assessments WHERE lesson_number = ? ORDER BY created_at",
+        (lesson_number,),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_feedback_history(lesson_number: int) -> list[dict]:
+    """Retrieve all feedback records for a lesson."""
+    conn = _get_connection()
+    rows = conn.execute(
+        "SELECT question_number, user_answer, tutor_feedback, created_at "
+        "FROM feedback WHERE lesson_number = ? ORDER BY created_at",
+        (lesson_number,),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -114,14 +245,21 @@ async def generate_lesson_questions(lesson_number: int) -> dict:
         "questions": questions,
         "reference_answers": references,
     }
+
+    # Persist to SQLite
+    _save_questions_to_db(lesson_number, questions, references)
+
     return data
 
 
 def get_lesson_session(lesson_number: int) -> dict:
-    """Retrieve stored questions/answers for a lesson. Raises if not generated yet."""
+    """Retrieve stored questions/answers for a lesson. Checks cache then DB."""
     if lesson_number not in SESSION:
-        raise ValueError(
-            f"Questions for Lesson {lesson_number} have not been generated yet. "
-            "Run generate_lesson_questions() first."
-        )
+        # Try loading from SQLite
+        data = _load_session_from_db(lesson_number)
+        if data is None:
+            raise ValueError(
+                f"Questions for Lesson {lesson_number} have not been generated yet. "
+                "Run generate_lesson_questions() first."
+            )
     return SESSION[lesson_number]

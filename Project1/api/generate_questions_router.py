@@ -6,11 +6,13 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from fastapi import APIRouter, HTTPException
+from openai import NotFoundError
 
 from generate_questions import (
     generate_lesson_questions,
     get_lesson_session,
-    SESSION,
+    get_assessment_history,
+    get_feedback_history,
 )
 
 router = APIRouter(prefix="/lessons", tags=["Generate Questions"])
@@ -22,7 +24,15 @@ async def generate_questions(lesson_number: int):
     try:
         data = await generate_lesson_questions(lesson_number)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        error_msg = str(e)
+        if "Vector Store ID" in error_msg and "not found" in error_msg:
+            raise HTTPException(status_code=400, detail={"vector_id": error_msg})
+        raise HTTPException(status_code=400, detail=error_msg)
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail={"message": f"Vector Store ID for Lesson {lesson_number} is not found on OpenAI Storage. Please check your LESSON_{lesson_number}_VECTOR_STORE_ID in .env file."},
+        )
     return {
         "lesson_number": lesson_number,
         "questions": data["questions"],
@@ -40,4 +50,14 @@ def get_questions(lesson_number: int):
     return {
         "lesson_number": lesson_number,
         "questions": session["questions"],
+    }
+
+
+@router.get("/{lesson_number}/history")
+def get_lesson_history(lesson_number: int):
+    """Retrieve all stored assessments and feedback for a lesson."""
+    return {
+        "lesson_number": lesson_number,
+        "assessments": get_assessment_history(lesson_number),
+        "feedback": get_feedback_history(lesson_number),
     }

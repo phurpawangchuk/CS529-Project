@@ -17,8 +17,6 @@ const APIS = {
 
 const REASONING_LEVELS = ["low", "medium", "high"];
 
-const LESSONS = [1, 2, 3];
-
 function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -40,8 +38,16 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [uploadPageOpen, setUploadPageOpen] = useState(false);
+  const [uploadLesson, setUploadLesson] = useState(1);
+  const [uploadDragging, setUploadDragging] = useState(false);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const historyMenuRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const api = APIS[activeApi];
   const isLlm = activeApi === "llm-chat";
@@ -80,6 +86,70 @@ function App() {
       .catch(() => {});
   };
 
+  const handleUpload = async () => {
+    if (!uploadFile || uploading) return;
+    setUploading(true);
+    setUploadStatus(null);
+
+    const formData = new FormData();
+    formData.append("file", uploadFile);
+    formData.append("lesson_number", uploadLesson);
+
+    try {
+      const res = await fetch(`${APIS["multi-agent"].url}/upload/`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Upload failed");
+      setUploadStatus({ type: "success", message: `Uploaded "${data.filename}" to Lesson ${data.lesson_number}` });
+      setUploadFile(null);
+      // Refresh settings to update lesson configs
+      fetch(`${APIS["multi-agent"].url}/settings`)
+        .then((r) => r.json())
+        .then((d) => setLessonConfigs(d.lessons || []))
+        .catch(() => {});
+    } catch (err) {
+      setUploadStatus({ type: "error", message: err.message });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setUploadDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) setUploadFile(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setUploadDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setUploadDragging(false);
+  };
+
+  const handleDeleteLesson = async (lessonNumber) => {
+    try {
+      const res = await fetch(`${APIS["multi-agent"].url}/upload/${lessonNumber}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Delete failed");
+      setDeleteConfirm(null);
+      // Refresh lesson configs
+      const settingsRes = await fetch(`${APIS["multi-agent"].url}/settings`);
+      const settingsData = await settingsRes.json();
+      setLessonConfigs(settingsData.lessons || []);
+    } catch (err) {
+      alert(`Failed to delete: ${err.message}`);
+      setDeleteConfirm(null);
+    }
+  };
+
   // Close history menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -93,6 +163,7 @@ function App() {
 
   const generateQuestions = async (lessonNumber) => {
     if (loading) return;
+    setUploadPageOpen(false);
     setSelectedLesson(lessonNumber);
     setQuizQuestions([]);
     setCurrentQuestion(0);
@@ -316,6 +387,7 @@ function App() {
     setQuizFinished(false);
     setHistoryData(null);
     setHistoryLesson(null);
+    setUploadPageOpen(false);
   };
 
   const fetchHistory = async (lessonNumber) => {
@@ -324,6 +396,7 @@ function App() {
     setHistoryLoading(true);
     setHistoryLesson(lessonNumber);
     setHistoryData(null);
+    setUploadPageOpen(false);
     // Clear quiz state when viewing history
     setMessages([]);
     setSelectedLesson(null);
@@ -376,14 +449,14 @@ function App() {
             </button>
             {historyMenuOpen && (
               <div className="sidebar-submenu">
-                {LESSONS.map((num) => (
+                {lessonConfigs.filter((lc) => lc.configured).map((lc) => (
                   <button
-                    key={num}
-                    className={`sidebar-submenu-item ${historyLesson === num ? "active" : ""}`}
-                    onClick={() => fetchHistory(num)}
+                    key={lc.lesson_number}
+                    className={`sidebar-submenu-item ${historyLesson === lc.lesson_number ? "active" : ""}`}
+                    onClick={() => fetchHistory(lc.lesson_number)}
                     disabled={historyLoading}>
                     <span className="sidebar-icon">&#128209;</span>
-                    Lesson {num}
+                    Lesson {lc.lesson_number}
                   </button>
                 ))}
               </div>
@@ -464,7 +537,17 @@ function App() {
           </div>
 
           {/* Upload */}
-          <button className="sidebar-menu-btn">
+          <button
+            className={`sidebar-menu-btn ${uploadPageOpen ? "open" : ""}`}
+            onClick={() => {
+              setUploadPageOpen(true);
+              setMessages([]);
+              setHistoryData(null);
+              setHistoryLesson(null);
+              setSelectedLesson(null);
+              setQuizQuestions([]);
+              setQuizFinished(false);
+            }}>
             <span className="sidebar-icon">{"\u{1F4E4}"}</span>
             <span>Upload</span>
           </button>
@@ -491,21 +574,141 @@ function App() {
       )}
 
       <div className="chat-messages">
-        {messages.length === 0 && !historyData && (
+        {uploadPageOpen && (
+          <div className="upload-page">
+            <div className="upload-page-header">
+              <h2>Upload Lesson Documents</h2>
+              <p>Upload PDF, TXT, or DOCX files to configure lessons for quiz generation.</p>
+            </div>
+
+            <div className="upload-page-form">
+              <div className="upload-page-field">
+                <label>Select Lesson</label>
+                <select
+                  value={uploadLesson}
+                  onChange={(e) => setUploadLesson(Number(e.target.value))}>
+                  {Array.from({ length: 5 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>Lesson {n}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div
+                className={`upload-dropzone-large ${uploadDragging ? "dragging" : ""}`}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onClick={() => fileInputRef.current?.click()}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.txt,.docx"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    if (e.target.files[0]) setUploadFile(e.target.files[0]);
+                  }}
+                />
+                {uploadFile ? (
+                  <div className="upload-file-selected">
+                    <span className="upload-file-icon-lg">{"\u{1F4C4}"}</span>
+                    <div>
+                      <div className="upload-file-name-lg">{uploadFile.name}</div>
+                      <div className="upload-file-size">{(uploadFile.size / 1024).toFixed(1)} KB</div>
+                    </div>
+                    <button
+                      className="upload-file-remove"
+                      onClick={(e) => { e.stopPropagation(); setUploadFile(null); }}>
+                      &#10005;
+                    </button>
+                  </div>
+                ) : (
+                  <div className="upload-placeholder-large">
+                    <span className="upload-drop-icon-lg">{"\u{1F4C1}"}</span>
+                    <span className="upload-drop-text">Drag & drop your file here</span>
+                    <span className="upload-drop-or">or</span>
+                    <span className="upload-browse-link">Browse files</span>
+                    <span className="upload-hint-lg">Supported: PDF, TXT, DOCX</span>
+                  </div>
+                )}
+              </div>
+
+              {uploadStatus && (
+                <div className={`upload-status-lg ${uploadStatus.type}`}>
+                  {uploadStatus.type === "success" ? "\u2705" : "\u274C"} {uploadStatus.message}
+                </div>
+              )}
+
+              <button
+                className="upload-submit-btn-lg"
+                onClick={handleUpload}
+                disabled={!uploadFile || uploading}>
+                {uploading ? "Uploading..." : "Upload Document"}
+              </button>
+            </div>
+
+            <div className="upload-page-table">
+              <h3>Uploaded Documents</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Lesson</th>
+                    <th>Filename</th>
+                    <th>Status</th>
+                    <th>Vector Store ID</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lessonConfigs.filter((lc) => lc.configured).length > 0 ? (
+                    lessonConfigs
+                      .filter((lc) => lc.configured)
+                      .map((lc) => (
+                        <tr key={lc.lesson_number}>
+                          <td>Lesson {lc.lesson_number}</td>
+                          <td>{lc.filename || "—"}</td>
+                          <td>
+                            <span className="upload-table-status configured">Available</span>
+                          </td>
+                          <td className="upload-table-vsid">{lc.vector_store_id}</td>
+                          <td>
+                            <button
+                              className="upload-delete-btn"
+                              onClick={() => setDeleteConfirm(lc.lesson_number)}>
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                  ) : (
+                    <tr>
+                      <td colSpan="5" className="upload-table-empty">No documents uploaded yet.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {messages.length === 0 && !historyData && !uploadPageOpen && (
           <div className="welcome">
             <h2>How can I help you today?</h2>
             <p>{welcomeText}</p>
             {!isLlm && (
               <div className="lesson-buttons">
-                {LESSONS.map((num) => (
-                  <button
-                    key={num}
-                    className="lesson-btn"
-                    onClick={() => generateQuestions(num)}
-                    disabled={loading}>
-                    Lesson {num}
-                  </button>
-                ))}
+                {lessonConfigs.filter((lc) => lc.configured).length > 0 ? (
+                  lessonConfigs.filter((lc) => lc.configured).map((lc) => (
+                    <button
+                      key={lc.lesson_number}
+                      className="lesson-btn"
+                      onClick={() => generateQuestions(lc.lesson_number)}
+                      disabled={loading}>
+                      Lesson {lc.lesson_number}
+                    </button>
+                  ))
+                ) : (
+                  <p className="no-lessons-hint">No lessons uploaded yet. Use the Upload page to add lesson documents.</p>
+                )}
               </div>
             )}
           </div>
@@ -593,6 +796,24 @@ function App() {
         </button>
       </form>
     </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm !== null && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Lesson {deleteConfirm}</h3>
+            <p>Are you sure you want to delete this document? This will also remove it from OpenAI storage.</p>
+            <div className="modal-actions">
+              <button className="modal-cancel-btn" onClick={() => setDeleteConfirm(null)}>
+                Cancel
+              </button>
+              <button className="modal-delete-btn" onClick={() => handleDeleteLesson(deleteConfirm)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

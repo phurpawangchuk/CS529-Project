@@ -31,7 +31,7 @@ async def generate_questions(lesson_number: int):
     except NotFoundError as e:
         raise HTTPException(
             status_code=404,
-            detail={"message": f"Vector Store ID for Lesson {lesson_number} is not found on OpenAI Storage. Please check your LESSON_{lesson_number}_VECTOR_STORE_ID in .env file."},
+            detail={"message": f"Vector Store ID for Lesson {lesson_number} is not found on OpenAI Storage. Please re-upload the document for Lesson {lesson_number}."},
         )
     return {
         "lesson_number": lesson_number,

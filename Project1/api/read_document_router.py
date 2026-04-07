@@ -8,11 +8,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from fastapi import APIRouter, HTTPException
 
 from read_document import (
-    LESSON_VECTOR_STORES,
     TOTAL_LESSONS,
     QUESTIONS_PER_LESSON,
     get_vector_store_id,
     list_configured_lessons,
+    get_all_lesson_documents,
 )
 
 router = APIRouter(prefix="/lessons", tags=["Lessons"])
@@ -21,13 +21,15 @@ router = APIRouter(prefix="/lessons", tags=["Lessons"])
 @router.get("/")
 def get_all_lessons():
     """List all lessons and their configuration status."""
+    docs = get_all_lesson_documents()
     lessons = []
-    for num, store_id in LESSON_VECTOR_STORES.items():
-        configured = "REPLACE" not in store_id
+    for num in range(1, TOTAL_LESSONS + 1):
+        doc = docs.get(num)
         lessons.append({
             "lesson_number": num,
-            "configured": configured,
-            "vector_store_id": store_id if configured else None,
+            "configured": doc is not None,
+            "vector_store_id": doc["vector_store_id"] if doc else None,
+            "filename": doc["filename"] if doc else None,
         })
     return {
         "total_lessons": TOTAL_LESSONS,

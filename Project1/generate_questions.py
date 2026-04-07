@@ -8,9 +8,7 @@ Pattern reference: 4_AgenticPatterns/tools/hostedtools.ipynb (FileSearchTool)
 """
 
 import json
-import os
 import re
-import sqlite3
 
 from agents import Agent, Runner, trace, FileSearchTool
 
@@ -18,59 +16,8 @@ from read_document import (
     MODEL,
     QUESTIONS_PER_LESSON,
     get_vector_store_id,
+    _get_connection,
 )
-
-# ---------------------------------------------------------------------------
-# SQLite database setup
-# ---------------------------------------------------------------------------
-DB_PATH = os.path.join(os.path.dirname(__file__), "quiz_sessions.db")
-
-
-def _get_connection() -> sqlite3.Connection:
-    """Return a connection to the SQLite database."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
-
-
-def _init_db():
-    """Create tables if they don't exist."""
-    conn = _get_connection()
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS questions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lesson_number INTEGER NOT NULL,
-            question_number INTEGER NOT NULL,
-            question TEXT NOT NULL,
-            reference_answer TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(lesson_number, question_number)
-        );
-
-        CREATE TABLE IF NOT EXISTS assessments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lesson_number INTEGER NOT NULL,
-            question_number INTEGER NOT NULL,
-            user_answer TEXT NOT NULL,
-            grading_result TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS feedback (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lesson_number INTEGER NOT NULL,
-            question_number INTEGER NOT NULL,
-            user_answer TEXT NOT NULL,
-            tutor_feedback TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    conn.commit()
-    conn.close()
-
-
-_init_db()
 
 # ---------------------------------------------------------------------------
 # In-memory session cache (backed by SQLite)
@@ -100,7 +47,6 @@ def _load_session_from_db(lesson_number: int) -> dict | None:
 def _save_questions_to_db(lesson_number: int, questions: list[str], reference_answers: list[str]):
     """Persist generated questions and reference answers to SQLite."""
     conn = _get_connection()
-    # Replace old questions for this lesson
     conn.execute("DELETE FROM questions WHERE lesson_number = ?", (lesson_number,))
     for i, (q, a) in enumerate(zip(questions, reference_answers), start=1):
         conn.execute(

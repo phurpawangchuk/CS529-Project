@@ -21,6 +21,7 @@ from api.generate_questions_router import router as generate_questions_router
 from api.quiz_assessment_router import router as quiz_assessment_router
 from api.assessment_result_router import router as assessment_result_router
 from api.settings_router import router as settings_router
+from api.upload_router import router as upload_router
 
 app = FastAPI(
     title="Lesson Quiz Assessment API",
@@ -46,6 +47,7 @@ app.include_router(generate_questions_router)
 app.include_router(quiz_assessment_router)
 app.include_router(assessment_result_router)
 app.include_router(settings_router)
+app.include_router(upload_router)
 
 
 @app.get("/", tags=["Health"])

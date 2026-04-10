@@ -31,10 +31,9 @@ Edit `.env` with your values:
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_DEFAULT_MODEL=gpt-4o-mini
 SERPER_API_KEY=your_serper_api_key_here
-LESSON_1_VECTOR_STORE_ID=paste_here_lesson_1_vector_store_id
-LESSON_2_VECTOR_STORE_ID=paste_here_lesson_2_vector_store_id
-LESSON_3_VECTOR_STORE_ID=paste_here_lesson_3_vector_store_id
 ```
+
+> **Note:** Vector store IDs are no longer configured manually. They are created automatically when you upload lesson documents through the UI.
 
 ### 3. Install Python dependencies
 
@@ -68,11 +67,21 @@ npm start
 
 The UI will open at http://localhost:3000.
 
+## How It Works
+
+1. **Upload Documents** — Use the UI to upload lesson documents (PDF, TXT, or DOCX). Each upload automatically creates an OpenAI vector store and persists the association in a local SQLite database.
+2. **Generate Questions** — Select a lesson and generate quiz questions from the uploaded document.
+3. **Take the Quiz** — Answer the generated questions in the UI.
+4. **Get Feedback** — Receive AI-graded results with detailed tutor feedback.
+
 ## API Endpoints
 
 | Endpoint | Description |
 |---|---|
 | `GET /` | Health check |
+| `POST /upload/` | Upload a lesson document and create a vector store |
+| `DELETE /upload/{lesson_number}` | Delete a lesson document and its vector store |
+| `GET /settings` | Get configured lessons and their vector store IDs |
 | `POST /read-document` | Read and parse a lesson document |
 | `POST /generate-questions` | Generate quiz questions for a lesson |
 | `POST /quiz-assessment` | Grade student answers |
@@ -84,6 +93,8 @@ The UI will open at http://localhost:3000.
 Project1/
 ├── api/                  # FastAPI routers
 │   ├── main.py           # App entry point
+│   ├── upload_router.py  # Dynamic file upload & vector store management
+│   ├── settings_router.py
 │   ├── read_document_router.py
 │   ├── generate_questions_router.py
 │   ├── quiz_assessment_router.py

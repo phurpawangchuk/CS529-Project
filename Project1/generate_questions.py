@@ -8,9 +8,7 @@ Pattern reference: 4_AgenticPatterns/tools/hostedtools.ipynb (FileSearchTool)
 """
 
 import json
-import os
 import re
-import sqlite3
 
 from agents import Agent, Runner, trace, FileSearchTool
 
@@ -18,59 +16,8 @@ from read_document import (
     MODEL,
     QUESTIONS_PER_LESSON,
     get_vector_store_id,
+    _get_connection,
 )
-
-# ---------------------------------------------------------------------------
-# SQLite database setup
-# ---------------------------------------------------------------------------
-DB_PATH = os.path.join(os.path.dirname(__file__), "quiz_sessions.db")
-
-
-def _get_connection() -> sqlite3.Connection:
-    """Return a connection to the SQLite database."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
-
-
-def _init_db():
-    """Create tables if they don't exist."""
-    conn = _get_connection()
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS questions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lesson_number INTEGER NOT NULL,
-            question_number INTEGER NOT NULL,
-            question TEXT NOT NULL,
-            reference_answer TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(lesson_number, question_number)
-        );
-
-        CREATE TABLE IF NOT EXISTS assessments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lesson_number INTEGER NOT NULL,
-            question_number INTEGER NOT NULL,
-            user_answer TEXT NOT NULL,
-            grading_result TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS feedback (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lesson_number INTEGER NOT NULL,
-            question_number INTEGER NOT NULL,
-            user_answer TEXT NOT NULL,
-            tutor_feedback TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    conn.commit()
-    conn.close()
-
-
-_init_db()
 
 # ---------------------------------------------------------------------------
 # In-memory session cache (backed by SQLite)
@@ -100,7 +47,6 @@ def _load_session_from_db(lesson_number: int) -> dict | None:
 def _save_questions_to_db(lesson_number: int, questions: list[str], reference_answers: list[str]):
     """Persist generated questions and reference answers to SQLite."""
     conn = _get_connection()
-    # Replace old questions for this lesson
     conn.execute("DELETE FROM questions WHERE lesson_number = ?", (lesson_number,))
     for i, (q, a) in enumerate(zip(questions, reference_answers), start=1):
         conn.execute(
@@ -163,32 +109,17 @@ def get_feedback_history(lesson_number: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Prompt & instruction constants
 # ---------------------------------------------------------------------------
-# QUESTION_GENERATOR_INSTRUCTIONS = (
-#     "You are an expert quiz creator. Your job is to generate study questions "
-#     "from the uploaded lesson materials using the file search tool. "
-#     "Rules:\n"
-#     "  - Only use facts found via the file search tool; never invent information.\n"
-#     "  - Cover different sections or key concepts from the lesson.\n"
-#     "  - Return a single JSON object with exactly two keys:\n"
-#     '      "questions"          — array of 5 question strings\n'
-#     '      "reference_answers"  — array of 5 concise ideal-answer strings\n'
-#     "  - Number questions implicitly by array index (1..5).\n"
-#     "  - Output raw JSON only — no markdown fences, no extra text."
-# )
-
 QUESTION_GENERATOR_INSTRUCTIONS = (
-    "You are an expert quiz generator. Create quiz questions only from the uploaded lesson materials using the file search tool. "
-    "Do not invent or assume any information. Cover different sections or key concepts from the lesson. "
-    "Return exactly one raw JSON object with these 4 keys only: "
-    '"questions", "answers", "types", "options". '
-    '"questions" must be an array of 5 items. '
-    '"answers" must be an array of 5 items. '
-    '"types" must be an array of 5 items, where each item is exactly one of: "multiple_choice", "fill_keyword", "true_or_false". '
-    '"options" must be an array of 5 items aligned by index with the questions. '
-    "For a multiple_choice question: provide exactly 4 options in options[index], and the answer must match exactly one of those options. "
-    "For a fill_keyword question: the question must contain exactly one blank written as '____', options[index] must be an empty array, and the answer must be the missing main keyword. "
-    "For a true_or_false question: options[index] must be an empty array, and the answer must be exactly 'true' or 'false'. "
-    "Number questions implicitly by array index. Output raw JSON only with no markdown fences, labels, or extra text."
+    "You are an expert quiz creator. Your job is to generate study questions "
+    "from the uploaded lesson materials using the file search tool. "
+    "Rules:\n"
+    "  - Only use facts found via the file search tool; never invent information.\n"
+    "  - Cover different sections or key concepts from the lesson.\n"
+    "  - Return a single JSON object with exactly two keys:\n"
+    '      "questions"          — array of 5 question strings\n'
+    '      "reference_answers"  — array of 5 concise ideal-answer strings\n'
+    "  - Number questions implicitly by array index (1..5).\n"
+    "  - Output raw JSON only — no markdown fences, no extra text."
 )
 
 GENERATE_QUIZ_PROMPT = (
@@ -196,6 +127,7 @@ GENERATE_QUIZ_PROMPT = (
     "Cover different sections or concepts when possible. "
     "Return only the JSON object as specified in your instructions."
 )
+
 
 # ---------------------------------------------------------------------------
 # Helper
@@ -246,13 +178,8 @@ async def generate_lesson_questions(lesson_number: int) -> dict:
         result = await Runner.run(agent, prompt)
 
     data = extract_json_object(result.final_output)
-
-    print(data)
-
     questions = data.get("questions", [])
-    references = data.get("answers", [])
-    types = data.get("types", [])
-    options = data.get("options", [])
+    references = data.get("reference_answers", [])
 
     if len(questions) != QUESTIONS_PER_LESSON or len(references) != QUESTIONS_PER_LESSON:
         raise ValueError(
@@ -262,9 +189,7 @@ async def generate_lesson_questions(lesson_number: int) -> dict:
 
     SESSION[lesson_number] = {
         "questions": questions,
-        "answers": references,
-        "types": types,
-        "options": options
+        "reference_answers": references,
     }
 
     # Persist to SQLite

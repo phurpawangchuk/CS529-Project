@@ -17,13 +17,156 @@ const APIS = {
 
 const REASONING_LEVELS = ["low", "medium", "high"];
 
+const API_BASE = "http://localhost:8000";
+
+function OTPAuth({ onAuthenticated }) {
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState("email"); // "email" | "otp"
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [sentEmail, setSentEmail] = useState("");
+
+  const handleSendOtp = async (e) => {
+    e.preventDefault();
+    if (!email.trim() || loading) return;
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to send OTP");
+      setSentEmail(data.email);
+      setStep("otp");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (!otp.trim() || loading) return;
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: sentEmail, otp: otp.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Verification failed");
+      onAuthenticated(sentEmail);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setLoading(true);
+    setError("");
+    setOtp("");
+    try {
+      const res = await fetch(`${API_BASE}/auth/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: sentEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to resend OTP");
+      setError("");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="otp-page">
+      <div className="otp-card">
+        <div className="otp-brand">
+          <span className="otp-brand-icon">{"\u{1F3AF}"}</span>
+          <h1>Quiz Mock Master</h1>
+        </div>
+
+        {step === "email" ? (
+          <>
+            <p className="otp-subtitle">Enter your email to receive a one-time password</p>
+            <form onSubmit={handleSendOtp} className="otp-form">
+              <label>Email Address</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                autoFocus
+              />
+              {error && <div className="otp-error">{error}</div>}
+              <button type="submit" disabled={loading || !email.trim()}>
+                {loading ? "Sending..." : "Send OTP"}
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <p className="otp-subtitle">
+              We sent a 6-digit code to <strong>{sentEmail}</strong>
+            </p>
+            <form onSubmit={handleVerifyOtp} className="otp-form">
+              <label>Enter OTP</label>
+              <input
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="------"
+                className="otp-code-input"
+                maxLength={6}
+                required
+                autoFocus
+              />
+              {error && <div className="otp-error">{error}</div>}
+              <button type="submit" disabled={loading || otp.length !== 6}>
+                {loading ? "Verifying..." : "Verify"}
+              </button>
+            </form>
+            <div className="otp-actions">
+              <button className="otp-link-btn" onClick={handleResend} disabled={loading}>
+                Resend code
+              </button>
+              <button className="otp-link-btn" onClick={() => { setStep("email"); setError(""); setOtp(""); }}>
+                Change email
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeApi, setActiveApi] = useState("multi-agent");
   const [reasoning, setReasoning] = useState("medium");
+  const [totalQuestions, setTotalQuestions] = useState(5);
+  const [questionType, setQuestionType] = useState("short_qa");
   const [selectedLesson, setSelectedLesson] = useState(null);
   const [model, setModel] = useState("gpt-4o-mini");
   const [temperature, setTemperature] = useState(0.7);
@@ -33,6 +176,7 @@ function App() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);
   const [quizFinished, setQuizFinished] = useState(false);
+  const [quizResults, setQuizResults] = useState([]);
   const [historyData, setHistoryData] = useState(null);
   const [historyLesson, setHistoryLesson] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -80,7 +224,7 @@ function App() {
       .then((res) => res.json())
       .then((data) => {
         setModel(data.model);
-        setTemperature(data.temperature);
+        setTemperature(data.temperature ?? 0.7);
         setLessonConfigs(data.lessons || []);
       })
       .catch(() => {});
@@ -169,6 +313,7 @@ function App() {
     setCurrentQuestion(0);
     setScore(0);
     setQuizFinished(false);
+    setQuizResults([]);
     setMessages([
       {
         role: "user",
@@ -179,7 +324,7 @@ function App() {
 
     try {
       const res = await fetch(
-        `${APIS["multi-agent"].url}/lessons/${lessonNumber}/generate`,
+        `${APIS["multi-agent"].url}/lessons/${lessonNumber}/generate?question_type=${questionType}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -284,12 +429,36 @@ function App() {
       const nextQ = currentQuestion + 1;
       const isLast = nextQ >= quizQuestions.length;
 
+      // Collect this question's result
+      const thisResult = {
+        question_number: questionNum,
+        question: quizQuestions[currentQuestion],
+        user_answer: text,
+        grading_result: assessData.grading_result,
+        tutor_feedback: feedbackData.tutor_feedback || "",
+      };
+      const updatedResults = [...quizResults, thisResult];
+      setQuizResults(updatedResults);
+
       let responseContent = `**${assessData.grading_result}**\n\n${feedbackData.tutor_feedback}`;
 
       if (isLast) {
         const finalScore = isCorrect ? score + 1 : score;
         responseContent += `\n\n---\n\n**Quiz Complete!** Your score: **${finalScore} / ${quizQuestions.length}**\n\nClick "New Chat" or select another lesson to try again.`;
         setQuizFinished(true);
+
+        // Send quiz results email
+        fetch(`${APIS["multi-agent"].url}/lessons/${selectedLesson}/email-results`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipient_email: userEmail,
+            lesson_number: selectedLesson,
+            score: finalScore,
+            total: quizQuestions.length,
+            results: updatedResults,
+          }),
+        }).catch(() => {});
       } else {
         responseContent += `\n\n---\n\nPlease answer **Question ${
           nextQ + 1
@@ -385,6 +554,7 @@ function App() {
     setCurrentQuestion(0);
     setScore(0);
     setQuizFinished(false);
+    setQuizResults([]);
     setHistoryData(null);
     setHistoryLesson(null);
     setUploadPageOpen(false);
@@ -404,6 +574,7 @@ function App() {
     setCurrentQuestion(0);
     setScore(0);
     setQuizFinished(false);
+    setQuizResults([]);
 
     try {
       const res = await fetch(
@@ -428,6 +599,17 @@ function App() {
   const placeholderText = inQuizMode
     ? `Answer Question ${currentQuestion + 1}...`
     : "Type your message...";
+
+  if (!authenticated) {
+    return (
+      <OTPAuth
+        onAuthenticated={(email) => {
+          setUserEmail(email);
+          setAuthenticated(true);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="app-layout">
@@ -495,7 +677,7 @@ function App() {
                       setModel(e.target.value);
                       updateSetting({ model: e.target.value });
                     }}>
-                    {availableModels.map((m) => (
+                    {(availableModels.length > 0 ? availableModels : ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"]).map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
@@ -505,19 +687,56 @@ function App() {
                   <input
                     type="range"
                     min="0"
-                    max="2"
+                    max="1"
                     step="0.1"
                     value={temperature}
                     onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      setTemperature(val);
-                      updateSetting({ temperature: val });
+                      setTemperature(parseFloat(e.target.value));
                     }}
                   />
                   <div className="sidebar-range-labels">
                     <span>Precise</span>
                     <span>Creative</span>
                   </div>
+                </div>
+                <div className="sidebar-settings-group">
+                  <label>Total Questions</label>
+                  <select
+                    className="sidebar-select"
+                    value={totalQuestions}
+                    onChange={(e) => setTotalQuestions(parseInt(e.target.value))}
+                  >
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sidebar-settings-group">
+                  <label>Question Type</label>
+                  <select
+                    className="sidebar-select"
+                    value={questionType}
+                    onChange={(e) => setQuestionType(e.target.value)}
+                  >
+                    <option value="short_qa">Short Q/A</option>
+                    <option value="mcq">MCQ</option>
+                    <option value="fill_blank">Fill the Blank</option>
+                    <option value="mixed">Mixed</option>
+                  </select>
+                </div>
+                <div className="sidebar-settings-group">
+                  <button
+                    className="sidebar-apply-btn"
+                    onClick={() => {
+                      updateSetting({
+                        model,
+                        questions_per_lesson: totalQuestions,
+                      });
+                      setSettingsMenuOpen(false);
+                    }}
+                  >
+                    Apply
+                  </button>
                 </div>
                 <div className="sidebar-settings-group">
                   <label>Reasoning</label>
@@ -547,15 +766,29 @@ function App() {
               setSelectedLesson(null);
               setQuizQuestions([]);
               setQuizFinished(false);
+    setQuizResults([]);
             }}>
             <span className="sidebar-icon">{"\u{1F4E4}"}</span>
             <span>Upload</span>
+          </button>
+
+          {/* Logout */}
+          <button
+            className="sidebar-menu-btn sidebar-logout-btn"
+            onClick={() => {
+              setAuthenticated(false);
+              setUserEmail("");
+              resetChat();
+            }}>
+            <span className="sidebar-icon">{"\u{1F6AA}"}</span>
+            <span>Logout</span>
           </button>
         </nav>
       </aside>
 
       <div className="chat-container">
         <header className="chat-header">
+          <span className="header-user">Welcome, {userEmail.split("@")[0].replace(/\d+$/g, "").replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()).trim() || userEmail.split("@")[0]} ({userEmail})</span>
           <div className="header-spacer" />
           <button className="reset-btn" onClick={resetChat}>
             New Chat
@@ -692,7 +925,7 @@ function App() {
 
         {messages.length === 0 && !historyData && !uploadPageOpen && (
           <div className="welcome">
-            <h2>How can I help you today?</h2>
+            <h2>Welcome, {userEmail.split("@")[0].replace(/\d+$/g, "").replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()).trim() || userEmail.split("@")[0]}!</h2>
             <p>{welcomeText}</p>
             {!isLlm && (
               <div className="lesson-buttons">
@@ -722,21 +955,28 @@ function App() {
               <p className="history-error">{historyData.error}</p>
             ) : historyData.assessments && historyData.assessments.length > 0 ? (
               historyData.assessments.map((a, i) => {
-                const fb = historyData.feedback?.[i];
+                const fb = historyData.feedback?.find(
+                  (f) => f.question_number === a.question_number && f.created_at?.slice(0, 16) === a.created_at?.slice(0, 16)
+                ) || historyData.feedback?.[i];
                 const isCorrect =
                   a.grading_result.toUpperCase().includes("CORRECT") &&
                   !a.grading_result.toUpperCase().includes("INCORRECT");
                 return (
-                  <div key={i} className="history-card">
+                  <div key={i} className={`history-card ${isCorrect ? "card-correct" : "card-incorrect"}`}>
                     <div className="history-q-header">
                       <span className="history-q-num">Q{a.question_number}</span>
                       <span className={`history-verdict ${isCorrect ? "correct" : "incorrect"}`}>
                         {isCorrect ? "Correct" : "Incorrect"}
                       </span>
                       <span className="history-date">
-                        {new Date(a.created_at).toLocaleDateString()}
+                        {new Date(a.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
                       </span>
                     </div>
+                    {a.question && (
+                      <div className="history-question">
+                        <strong>Question:</strong> {a.question}
+                      </div>
+                    )}
                     <div className="history-answer">
                       <strong>Your answer:</strong> {a.user_answer}
                     </div>

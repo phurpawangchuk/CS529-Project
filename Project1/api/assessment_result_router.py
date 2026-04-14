@@ -51,7 +51,7 @@ async def get_detailed_feedback(lesson_number: int, body: FeedbackRequest):
     tutor_feedback = result.final_output
 
     # Persist to SQLite
-    save_feedback(lesson_number, body.question_number, body.user_answer, tutor_feedback)
+    save_feedback(lesson_number, body.question_number, question, body.user_answer, tutor_feedback)
 
     return {
         "lesson_number": lesson_number,

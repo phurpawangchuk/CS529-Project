@@ -53,7 +53,7 @@ def assess_answer(lesson_number: int, body: AssessAnswerRequest):
     grading_result = response.choices[0].message.content or ""
 
     # Persist to SQLite
-    save_assessment(lesson_number, body.question_number, body.user_answer, grading_result)
+    save_assessment(lesson_number, body.question_number, question, body.user_answer, grading_result)
 
     return {
         "lesson_number": lesson_number,

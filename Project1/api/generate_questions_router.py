@@ -5,7 +5,7 @@ generate_questions_router.py — API endpoint to generate quiz questions for a l
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from openai import NotFoundError
 
 from generate_questions import (
@@ -19,10 +19,13 @@ router = APIRouter(prefix="/lessons", tags=["Generate Questions"])
 
 
 @router.post("/{lesson_number}/generate")
-async def generate_questions(lesson_number: int):
+async def generate_questions(
+    lesson_number: int,
+    question_type: str = Query("short_qa", description="Question type: short_qa, mcq, or fill_blank"),
+):
     """Generate 5 quiz questions + reference answers for a lesson from its document."""
     try:
-        data = await generate_lesson_questions(lesson_number)
+        data = await generate_lesson_questions(lesson_number, question_type=question_type)
     except ValueError as e:
         error_msg = str(e)
         if "Vector Store ID" in error_msg and "not found" in error_msg:

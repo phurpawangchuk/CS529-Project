@@ -36,6 +36,17 @@ def _get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _migrate_db():
+    """Add question column to assessments and feedback tables if missing."""
+    conn = _get_connection()
+    for table in ("assessments", "feedback"):
+        cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+        if "question" not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN question TEXT NOT NULL DEFAULT ''")
+    conn.commit()
+    conn.close()
+
+
 def _init_db():
     """Create tables if they don't exist."""
     conn = _get_connection()
@@ -63,6 +74,7 @@ def _init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             lesson_number INTEGER NOT NULL,
             question_number INTEGER NOT NULL,
+            question TEXT NOT NULL DEFAULT '',
             user_answer TEXT NOT NULL,
             grading_result TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -72,6 +84,7 @@ def _init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             lesson_number INTEGER NOT NULL,
             question_number INTEGER NOT NULL,
+            question TEXT NOT NULL DEFAULT '',
             user_answer TEXT NOT NULL,
             tutor_feedback TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -82,6 +95,7 @@ def _init_db():
 
 
 _init_db()
+_migrate_db()
 
 # ---------------------------------------------------------------------------
 # Lesson document helpers (SQLite persistence for uploads)

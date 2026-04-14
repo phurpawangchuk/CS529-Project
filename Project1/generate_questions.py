@@ -58,36 +58,40 @@ def _save_questions_to_db(lesson_number: int, questions: list[str], reference_an
     conn.close()
 
 
-def save_assessment(lesson_number: int, question_number: int, user_answer: str, grading_result: str):
+def save_assessment(lesson_number: int, question_number: int, question: str, user_answer: str, grading_result: str):
     """Store a grading result in the database."""
     conn = _get_connection()
     conn.execute(
-        "INSERT INTO assessments (lesson_number, question_number, user_answer, grading_result) "
-        "VALUES (?, ?, ?, ?)",
-        (lesson_number, question_number, user_answer, grading_result),
+        "INSERT INTO assessments (lesson_number, question_number, question, user_answer, grading_result) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (lesson_number, question_number, question, user_answer, grading_result),
     )
     conn.commit()
     conn.close()
 
 
-def save_feedback(lesson_number: int, question_number: int, user_answer: str, tutor_feedback: str):
+def save_feedback(lesson_number: int, question_number: int, question: str, user_answer: str, tutor_feedback: str):
     """Store tutor feedback in the database."""
     conn = _get_connection()
     conn.execute(
-        "INSERT INTO feedback (lesson_number, question_number, user_answer, tutor_feedback) "
-        "VALUES (?, ?, ?, ?)",
-        (lesson_number, question_number, user_answer, tutor_feedback),
+        "INSERT INTO feedback (lesson_number, question_number, question, user_answer, tutor_feedback) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (lesson_number, question_number, question, user_answer, tutor_feedback),
     )
     conn.commit()
     conn.close()
 
 
 def get_assessment_history(lesson_number: int) -> list[dict]:
-    """Retrieve all assessment records for a lesson."""
+    """Retrieve all assessment records for a lesson, including the question text."""
     conn = _get_connection()
     rows = conn.execute(
-        "SELECT question_number, user_answer, grading_result, created_at "
-        "FROM assessments WHERE lesson_number = ? ORDER BY created_at",
+        "SELECT a.question_number, "
+        "  CASE WHEN a.question != '' THEN a.question ELSE COALESCE(q.question, '') END AS question, "
+        "  a.user_answer, a.grading_result, a.created_at "
+        "FROM assessments a "
+        "LEFT JOIN questions q ON a.lesson_number = q.lesson_number AND a.question_number = q.question_number "
+        "WHERE a.lesson_number = ? ORDER BY a.created_at",
         (lesson_number,),
     ).fetchall()
     conn.close()
@@ -98,7 +102,7 @@ def get_feedback_history(lesson_number: int) -> list[dict]:
     """Retrieve all feedback records for a lesson."""
     conn = _get_connection()
     rows = conn.execute(
-        "SELECT question_number, user_answer, tutor_feedback, created_at "
+        "SELECT question_number, question, user_answer, tutor_feedback, created_at "
         "FROM feedback WHERE lesson_number = ? ORDER BY created_at",
         (lesson_number,),
     ).fetchall()
@@ -122,8 +126,30 @@ QUESTION_GENERATOR_INSTRUCTIONS = (
     "  - Output raw JSON only — no markdown fences, no extra text."
 )
 
+QUESTION_TYPE_PROMPTS = {
+    "short_qa": "Generate short answer questions that require brief written responses.",
+    "mcq": (
+        "Generate multiple-choice questions. Each question string must include the question "
+        "followed by four options labeled A), B), C), D). "
+        "The reference answer should be the correct option letter and its text."
+    ),
+    "fill_blank": (
+        "Generate fill-in-the-blank questions. Each question should contain a blank "
+        "indicated by '______' where the student must supply the missing word or phrase. "
+        "The reference answer should be the correct word or phrase for the blank."
+    ),
+    "mixed": (
+        "Generate a mix of question types: include some multiple-choice (with options A, B, C, D), "
+        "some short answer questions, and some fill-in-the-blank questions (using '______' for blanks). "
+        "Vary the types across the questions. "
+        "For MCQ questions, the reference answer should be the correct option letter and text. "
+        "For fill-in-the-blank, the reference answer should be the missing word or phrase."
+    ),
+}
+
 GENERATE_QUIZ_PROMPT = (
     "Generate exactly {n} distinct questions that test understanding of this lesson. "
+    "{question_type_instruction} "
     "Cover different sections or concepts when possible. "
     "Return only the JSON object as specified in your instructions."
 )
@@ -164,7 +190,7 @@ def build_question_generator_agent(lesson_number: int) -> Agent:
 # ---------------------------------------------------------------------------
 # Generate questions for a lesson
 # ---------------------------------------------------------------------------
-async def generate_lesson_questions(lesson_number: int) -> dict:
+async def generate_lesson_questions(lesson_number: int, question_type: str = "short_qa") -> dict:
     """
     Generate 5 questions + reference answers for the given lesson.
 
@@ -172,7 +198,8 @@ async def generate_lesson_questions(lesson_number: int) -> dict:
     Also stores the result in SESSION[lesson_number].
     """
     agent = build_question_generator_agent(lesson_number)
-    prompt = GENERATE_QUIZ_PROMPT.format(n=QUESTIONS_PER_LESSON)
+    type_instruction = QUESTION_TYPE_PROMPTS.get(question_type, QUESTION_TYPE_PROMPTS["short_qa"])
+    prompt = GENERATE_QUIZ_PROMPT.format(n=QUESTIONS_PER_LESSON, question_type_instruction=type_instruction)
 
     with trace(f"lesson_{lesson_number}_quiz_generation"):
         result = await Runner.run(agent, prompt)

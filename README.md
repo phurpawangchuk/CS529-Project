@@ -1,3 +1,13 @@
+---
+title: Lesson Quiz MockMaster
+emoji: 📝
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Lesson Quiz MockMaster
 
 An AI-powered quiz assessment system that generates quiz questions from lesson documents, grades student answers, and provides detailed tutor feedback using OpenAI Agents.

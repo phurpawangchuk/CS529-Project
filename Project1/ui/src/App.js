@@ -2,14 +2,16 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import "./App.css";
 
+const _BASE = process.env.REACT_APP_API_BASE ?? "http://localhost:8000";
+
 const APIS = {
   "multi-agent": {
-    url: "http://localhost:8000",
+    url: _BASE,
     label: "Quiz Mock Master",
     hasSession: true,
   },
   "llm-chat": {
-    url: "http://localhost:8001",
+    url: process.env.REACT_APP_LLM_CHAT_BASE ?? "http://localhost:8001",
     label: "LLM Chat (OpenAI)",
     hasSession: false,
   },
@@ -17,7 +19,7 @@ const APIS = {
 
 const REASONING_LEVELS = ["low", "medium", "high"];
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = _BASE;
 
 function OTPAuth({ onAuthenticated }) {
   const [email, setEmail] = useState("");

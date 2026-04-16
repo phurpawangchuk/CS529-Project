@@ -13,8 +13,12 @@ Swagger docs: http://127.0.0.1:8000/docs
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from api.read_document_router import router as read_document_router
 from api.generate_questions_router import router as generate_questions_router
@@ -35,9 +39,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# CORS — allow localhost for dev; in production the frontend is served from the
+# same origin so CORS is not needed, but we keep "http://localhost:3000" for local dev.
+allowed_origins = ["http://localhost:3000"]
+if os.getenv("SPACE_ID"):  # Running on Hugging Face Spaces
+    allowed_origins.append("*")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,7 +64,27 @@ app.include_router(auth_otp_router)
 app.include_router(send_email_router)
 
 
-@app.get("/", tags=["Health"])
-def health_check():
-    """API health check."""
-    return {"status": "ok", "service": "Lesson Quiz Assessment API"}
+# --------------- Serve React static build (production) ---------------
+STATIC_DIR = Path(__file__).resolve().parent.parent / "ui" / "build"
+
+if STATIC_DIR.is_dir():
+    # Serve static assets (JS, CSS, images, etc.)
+    app.mount("/static", StaticFiles(directory=STATIC_DIR / "static"), name="static")
+
+    @app.get("/", tags=["UI"])
+    def serve_root():
+        """Serve the React app."""
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/{full_path:path}", tags=["UI"])
+    def serve_spa(request: Request, full_path: str):
+        """Catch-all: serve the file if it exists, otherwise serve index.html for SPA routing."""
+        file = STATIC_DIR / full_path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(STATIC_DIR / "index.html")
+else:
+    @app.get("/", tags=["Health"])
+    def health_check():
+        """API health check."""
+        return {"status": "ok", "service": "Lesson Quiz Assessment API"}

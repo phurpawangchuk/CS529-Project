@@ -1,0 +1,6 @@
+Project1/ui/node_modules
+Project1/ui/build
+__pycache__
+*.pyc
+*.db
+.git

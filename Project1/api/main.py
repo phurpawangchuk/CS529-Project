@@ -76,13 +76,9 @@ if STATIC_DIR.is_dir():
         """Serve the React app."""
         return FileResponse(STATIC_DIR / "index.html")
 
-    @app.get("/{full_path:path}", tags=["UI"])
-    def serve_spa(request: Request, full_path: str):
-        """Catch-all: serve the file if it exists, otherwise serve index.html for SPA routing."""
-        file = STATIC_DIR / full_path
-        if file.is_file():
-            return FileResponse(file)
-        return FileResponse(STATIC_DIR / "index.html")
+    # NOTE: Do NOT add a catch-all /{path} route here — it would shadow
+    # all API routes (/settings, /upload, etc.).  The React SPA only needs
+    # "/" since it handles routing client-side via hash/state.
 else:
     @app.get("/", tags=["Health"])
     def health_check():

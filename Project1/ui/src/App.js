@@ -266,10 +266,13 @@ function App() {
       setUploadStatus({ type: "success", message: `Uploaded "${data.filename}" to Lesson ${data.lesson_number}` });
       setUploadFile(null);
       // Refresh settings to update lesson configs
-      fetch(`${APIS["multi-agent"].url}/settings/`)
-        .then((r) => r.json())
-        .then((d) => setLessonConfigs(d.lessons || []))
-        .catch(() => {});
+      try {
+        const settingsRes = await fetch(`${APIS["multi-agent"].url}/settings/`);
+        const settingsData = await settingsRes.json();
+        setLessonConfigs(settingsData.lessons || []);
+      } catch (e) {
+        console.error("Failed to refresh settings after upload:", e);
+      }
     } catch (err) {
       setUploadStatus({ type: "error", message: err.message });
     } finally {

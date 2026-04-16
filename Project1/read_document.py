@@ -25,7 +25,11 @@ MODEL = "gpt-4o-mini"
 # ---------------------------------------------------------------------------
 # SQLite database setup (shared across modules)
 # ---------------------------------------------------------------------------
-DB_PATH = os.path.join(os.path.dirname(__file__), "quiz_sessions.db")
+# On HF Spaces the app directory may be read-only; use /tmp for the DB.
+if os.getenv("SPACE_ID"):
+    DB_PATH = "/tmp/quiz_sessions.db"
+else:
+    DB_PATH = os.path.join(os.path.dirname(__file__), "quiz_sessions.db")
 
 
 def _get_connection() -> sqlite3.Connection:

@@ -221,7 +221,7 @@ function App() {
 
   // Fetch settings from backend on mount
   useEffect(() => {
-    fetch(`${APIS["multi-agent"].url}/settings`)
+    fetch(`${APIS["multi-agent"].url}/settings/`)
       .then((res) => res.json())
       .then((data) => {
         setModel(data.model || "gpt-4o-mini");
@@ -233,7 +233,7 @@ function App() {
   }, []);
 
   const updateSetting = (updates) => {
-    fetch(`${APIS["multi-agent"].url}/settings`, {
+    fetch(`${APIS["multi-agent"].url}/settings/`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
@@ -266,7 +266,7 @@ function App() {
       setUploadStatus({ type: "success", message: `Uploaded "${data.filename}" to Lesson ${data.lesson_number}` });
       setUploadFile(null);
       // Refresh settings to update lesson configs
-      fetch(`${APIS["multi-agent"].url}/settings`)
+      fetch(`${APIS["multi-agent"].url}/settings/`)
         .then((r) => r.json())
         .then((d) => setLessonConfigs(d.lessons || []))
         .catch(() => {});
@@ -302,7 +302,7 @@ function App() {
       if (!res.ok) throw new Error(data.detail || "Delete failed");
       setDeleteConfirm(null);
       // Refresh lesson configs
-      const settingsRes = await fetch(`${APIS["multi-agent"].url}/settings`);
+      const settingsRes = await fetch(`${APIS["multi-agent"].url}/settings/`);
       const settingsData = await settingsRes.json();
       setLessonConfigs(settingsData.lessons || []);
     } catch (err) {

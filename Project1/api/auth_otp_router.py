@@ -25,6 +25,13 @@ class VerifyOTPRequest(BaseModel):
     otp: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
 
 
+@router.get("/check")
+def auth_check():
+    """Check if OTP authentication is required (disabled on HF Spaces where SMTP is blocked)."""
+    skip = bool(os.getenv("SPACE_ID"))
+    return {"otp_required": not skip}
+
+
 @router.post("/send-otp")
 def send_otp(body: SendOTPRequest = SendOTPRequest()):
     """Generate and send an OTP to the given email address."""

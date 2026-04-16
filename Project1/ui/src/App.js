@@ -160,6 +160,7 @@ function OTPAuth({ onAuthenticated }) {
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -203,6 +204,20 @@ function App() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Check if OTP is required (skipped on HF Spaces)
+  useEffect(() => {
+    fetch(`${API_BASE}/auth/check`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.otp_required) {
+          setAuthenticated(true);
+          setUserEmail("guest");
+        }
+        setAuthChecked(true);
+      })
+      .catch(() => setAuthChecked(true));
+  }, []);
 
   // Fetch settings from backend on mount
   useEffect(() => {
@@ -601,6 +616,10 @@ function App() {
   const placeholderText = inQuizMode
     ? `Answer Question ${currentQuestion + 1}...`
     : "Type your message...";
+
+  if (!authChecked) {
+    return null; // Wait for auth check
+  }
 
   if (!authenticated) {
     return (

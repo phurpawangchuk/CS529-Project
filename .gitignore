@@ -8,3 +8,10 @@ orchestration_diagram.html
 Lesson_Quiz_MockMaster_Presentation.pptx
 quiz_sessions.db
 search_document.py
+Project2/
+Project2_using_llm/
+venv/
+*.env.example
+Dockerfile
+.dockerignore
+uv.lock
